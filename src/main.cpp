@@ -9,18 +9,68 @@
 #include <set>
 #include <sstream>
 #include <tuple>
+
 #include <opencv2/opencv.hpp>
+
 using namespace cv;
 using namespace std;
 
 typedef int16_t Channel;
-const int ImageType = CV_16SC3;
 typedef int16_t PosComponent;
+
+const int ImageType = CV_16SC3;
 
 typedef Vec<Channel, 3> Color;
 typedef pair<PosComponent, PosComponent> Pos;
 
 Channel invalidColor = -1;
+
+
+class BGRCubeWithPositions
+{
+public:
+    void insert(const Pos&);
+    void insert(const BGRCubeWithPositions& other);
+    void erase(const Pos&);
+    size_t size(); // needed?
+    bool empty();
+    typedef set<Pos> Values;
+    const Values& getValues() const;
+private:
+    Values values_;
+};
+
+const BGRCubeWithPositions::Values& BGRCubeWithPositions::getValues() const
+{
+    return values_;
+}
+
+void BGRCubeWithPositions::insert(const Pos& pos)
+{
+    values_.insert(pos);
+}
+
+void BGRCubeWithPositions::insert(const BGRCubeWithPositions& other)
+{
+    values_.insert(other.getValues().begin(), other.getValues().end());
+}
+
+void BGRCubeWithPositions::erase(const Pos& pos)
+{
+    auto it = values_.find(pos);
+    if (it != values_.end())
+        values_.erase(it);
+}
+
+size_t BGRCubeWithPositions::size()
+{
+    return values_.size();
+}
+
+bool BGRCubeWithPositions::empty()
+{
+    return values_.empty();
+}
 
 
 void SetPixel( Mat& image, Pos pos, const Color& color )
@@ -121,6 +171,7 @@ Channel ColorPosDiff(const Mat& image, Pos pos, Color color)
 	}
 	// Avoid division by zero.
 	colorCount = std::max(colorCount, 1);
+	//return result/colorCount;
 	// Square divisor to avoid coral like growing.
 	// This also reduces the number of currently open border pixels.
 	return result/(colorCount*colorCount);
@@ -237,4 +288,5 @@ int main()
 			imwrite("./output/image" + ss.str() + ".png", mixed);
 		}
 	}
+	return 0; // todo raus
 }
