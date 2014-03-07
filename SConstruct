@@ -23,5 +23,5 @@ VariantDir(build_dir, 'src', duplicate=0)
 source_files = [s.replace('src', build_dir, 1) for s in source_files]
 
 env.Append(LIBS=['opencv_core', 'opencv_imgproc', 'opencv_highgui'])
-env.Append(CXXFLAGS='-std=c++11 -Wall -Wextra -pedantic -Werror')
+env.Append(CXXFLAGS='-std=c++11 -O3 -Wall -Wextra -pedantic -Werror')
 env.Program(target='release/AllColors', source=source_files)
