@@ -25,59 +25,14 @@ typedef pair<PosComponent, PosComponent> Pos;
 
 Channel invalidColor = -1;
 
-
-class BGRCubeWithPositions
+void SetPixel(Mat& image, PosComponent x, PosComponent y, const Color& color)
 {
-public:
-    void insert(const Pos&);
-    void insert(const BGRCubeWithPositions& other);
-    void erase(const Pos&);
-    size_t size(); // needed?
-    bool empty();
-    typedef set<Pos> Values;
-    const Values& getValues() const;
-private:
-    Values values_;
-};
-
-const BGRCubeWithPositions::Values& BGRCubeWithPositions::getValues() const
-{
-    return values_;
-}
-
-void BGRCubeWithPositions::insert(const Pos& pos)
-{
-    values_.insert(pos);
-}
-
-void BGRCubeWithPositions::insert(const BGRCubeWithPositions& other)
-{
-    values_.insert(other.getValues().begin(), other.getValues().end());
-}
-
-void BGRCubeWithPositions::erase(const Pos& pos)
-{
-    auto it = values_.find(pos);
-    if (it != values_.end())
-        values_.erase(it);
-}
-
-size_t BGRCubeWithPositions::size()
-{
-    return values_.size();
-}
-
-bool BGRCubeWithPositions::empty()
-{
-    return values_.empty();
-}
-
-
-void SetPixel( Mat& image, Pos pos, const Color& color )
-{
-	PosComponent x, y;
-	tie(x, y) = pos;
 	image.at<Color>(y, x) = color;
+}
+
+Color GetPixel(const Mat& image, PosComponent x, PosComponent y)
+{
+	return image.at<Color>(y, x);
 }
 
 set<Pos> GetFreeNeighbours(const Mat& image, Pos pos)
@@ -86,8 +41,8 @@ set<Pos> GetFreeNeighbours(const Mat& image, Pos pos)
 	tie(x, y) = pos;
 	vector<Pos> neighbours;
 	neighbours.reserve(8);
-	for ( PosComponent nx = x-1; nx <= x+1; ++nx )
-		for ( PosComponent ny = y-1; ny <= y+1; ++ny )
+	for (PosComponent nx = x-1; nx <= x+1; ++nx)
+		for (PosComponent ny = y-1; ny <= y+1; ++ny)
 			neighbours.push_back(Pos(nx, ny));
 	set<Pos> result;
 	copy_if(neighbours.begin(), neighbours.end(), inserter(result, result.begin()), [&image](Pos pos) -> bool
@@ -96,7 +51,7 @@ set<Pos> GetFreeNeighbours(const Mat& image, Pos pos)
 		tie(x, y) = pos;
 		if (x < 0 || x >= image.cols || y < 0 || y >= image.rows)
 			return false;
-		return image.at<Color>(y, x)[0] == invalidColor;
+		return GetPixel(image, x, y)[0] == invalidColor;
 	});
 	return result;
 }
@@ -137,35 +92,30 @@ Color bgr2hsv(Color bgr)
 	return Color(h, s, v);
 }
 
-Channel ColorDiff(Color bgr1, Color bgr2)
+double ColorDiff(Color bgr1, Color bgr2)
 {
-	/*Color hsv1 = bgr2hsv(bgr1);
-	Color hsv2 = bgr2hsv(bgr2);
-
-	return abs(hsv2[0] - hsv1[0]) +
-		   abs(hsv2[1] - hsv1[1]) +
-		   abs(hsv2[2] - hsv1[2]);
-	*/
-	return abs(bgr2[0] - bgr1[0]) +
-		   abs(bgr2[1] - bgr1[1]) +
-		   abs(bgr2[2] - bgr1[2]);
+	double db = bgr2[0] - bgr1[0];
+	double dg = bgr2[1] - bgr1[1];
+	double dr = bgr2[2] - bgr1[2];
+	return sqrt(db*db + dg*dg + dr*dr);
 }
 
-Channel ColorPosDiff(const Mat& image, Pos pos, Color color)
+double ColorPosDiff(const Mat& image, Pos pos, Color color)
 {
 	PosComponent x, y;
 	tie(x, y) = pos;
-	Channel result = 0;
+	double result = 0;
 	int colorCount = 0;
-	for ( PosComponent nx = x-1; nx <= x+1; ++nx )
+	for (PosComponent nx = x-1; nx <= x+1; ++nx)
 	{
-		for ( PosComponent ny = y-1; ny <= y+1; ++ny )
+		for (PosComponent ny = y-1; ny <= y+1; ++ny)
 		{
 			if (nx < 0 || nx >= image.cols || ny < 0 || ny >= image.rows)
 				continue;
-			if (image.at<Color>(ny, nx)[0] == invalidColor)
+			Color pixelColor = GetPixel(image, nx, ny);
+			if (pixelColor[0] == invalidColor)
 				continue;
-			result += ColorDiff(color, (image.at<Color>(ny, nx)));
+			result += ColorDiff(color, pixelColor);
 			++colorCount;
 		}
 	}
@@ -177,24 +127,14 @@ Channel ColorPosDiff(const Mat& image, Pos pos, Color color)
 	return result/(colorCount*colorCount);
 }
 
-PosComponent LengthSquared(Pos pos)
-{
-	return pos.first * pos.first + pos.second * pos.second;
-}
 
-Pos PosDiff(Pos p1, Pos p2)
-{
-	return Pos(p2.first - p1.first, p2.second - p1.second);
-}
 
 Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color)
 {
 	vector<pair<double, Pos>> ratedPositions;
 	ratedPositions.reserve(nextPositions.size());
-	//Pos center = Pos(image.cols/2, image.rows/2);
 	transform(nextPositions.begin(), nextPositions.end(), back_inserter(ratedPositions), [&](Pos pos) -> pair<double, Pos>
 	{
-		//double squaredDistToCenter = LengthSquared(PosDiff(pos, center));
 		return make_pair(ColorPosDiff(image, pos, color), pos);
 	});
 	random_shuffle(ratedPositions.begin(), ratedPositions.end());
@@ -208,15 +148,7 @@ Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color)
 int main()
 {
 	vector<Color> colors;
-	//Mat image = Mat(64, 64, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 16; Channel colMult = 16;
-	//Mat image = Mat(128, 256, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 32; Channel colMult = 8;
 	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 64; Channel colMult = 4;
-	//Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 64; Channel colMult = 4;
-	//Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 32; Channel colMult = 8;
-	//Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 16; Channel colMult = 16;
-	//Mat image = Mat(480, 640, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 16; Channel colMult = 16;
-	//Mat image = Mat(720 , 1280, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 32; Channel colMult = 8;
-	//Mat image = Mat(720 , 1280, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 16; Channel colMult = 16;
 	for(Channel b = 0; b < colValues; ++b)
 		for(Channel g = 0; g < 2*colValues; ++ g)
 			for(Channel r = 0; r < 2*colValues; ++ r)
@@ -247,8 +179,10 @@ int main()
 		Color color = colors.back();
 		colors.pop_back();
 		Pos pos = FindBestPos(image, nextPositions, color);
-		nextPositions.erase(nextPositions.find(pos));
-		SetPixel(image, pos, color);
+		auto nextPositionsIt = nextPositions.find(pos);
+		assert(nextPositionsIt != nextPositions.end());
+		nextPositions.erase(nextPositionsIt);
+		SetPixel(image, pos.first, pos.second, color);
 		set<Pos> newFreePos = GetFreeNeighbours(image, pos);
 		nextPositions.insert(newFreePos.begin(), newFreePos.end());
 		if (colors.size() % saveEveryNFrames == 0)
@@ -280,17 +214,8 @@ int main()
 			Mat mixed;
 			addWeighted(ucharImg, 1.0, m, 0.5, 0.0, mixed);
 
-			//ffmpeg -r 50 -i image%04d.png -vcodec libx264 output.mpg
 			//ffmpeg -r 50 -i output/image%04d.png -vcodec libx264 -preset veryslow -qp 0 output/video.mp4
-			/*
-			imwrite("D:/allrgb/image" + ss.str() + "_ucharImg.png", ucharImg);
-			imwrite("D:/allrgb/image" + ss.str() + "_filtered.png", filtered);
-			imwrite("D:/allrgb/image" + ss.str() + "_m.png", m);
-			imwrite("D:/allrgb/image" + ss.str() + "_mixed.png", mixed);
-			imwrite("D:/allrgb/image" + ss.str() + "_tuchar.png", tuchar);
-			*/
 			imwrite("./output/image" + ss.str() + ".png", mixed);
 		}
 	}
-	return 0; // todo raus
 }
