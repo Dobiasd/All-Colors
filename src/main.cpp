@@ -148,7 +148,9 @@ Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color)
 int main()
 {
 	vector<Color> colors;
-	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 64; Channel colMult = 4;
+	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor));
+	Channel colValues = 64;
+	Channel colMult = 4;
 	for(Channel b = 0; b < colValues; ++b)
 		for(Channel g = 0; g < 2*colValues; ++ g)
 			for(Channel r = 0; r < 2*colValues; ++ r)
