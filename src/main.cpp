@@ -145,10 +145,37 @@ Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color)
 	})->second;
 }
 
-int main()
+set<Pos> NonBlackPositions(const Mat& img)
+{
+	set<Pos> result;
+	for (int y = 0; y < img.rows; ++y)
+		for (int x = 0; x < img.cols; ++x)
+			if (img.at<unsigned char>(y, x) > 0)
+				result.insert(Pos(x,y));
+	return result;
+}
+
+pair<Mat, set<Pos>> Init(int argc, char *argv[])
+{
+	if (argc > 1)
+	{
+		Mat src = imread(argv[1], CV_LOAD_IMAGE_GRAYSCALE);
+		Mat image = Mat(src.size(), ImageType, Scalar_<Channel>(invalidColor));
+		return make_pair(image, NonBlackPositions(src));
+	}
+
+	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor));
+	set<Pos> nextPositions;
+	nextPositions.insert(Pos(  image.cols/3, image.rows/2));
+	nextPositions.insert(Pos(2*image.cols/3, image.rows/2));
+	return make_pair(image, nextPositions);
+}
+
+
+
+int main(int argc, char *argv[])
 {
 	vector<Color> colors;
-	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor));
 	Channel colValues = 64;
 	Channel colMult = 4;
 	for(Channel b = 0; b < colValues; ++b)
@@ -169,9 +196,10 @@ int main()
 		return hsv1[0] < hsv2[0];
 	});
 
+	Mat image;
 	set<Pos> nextPositions;
-	nextPositions.insert(Pos(  image.cols/3, image.rows/2));
-	nextPositions.insert(Pos(2*image.cols/3, image.rows/2));
+	tie(image, nextPositions) = Init(argc, argv);
+
 	const int saveEveryNFrames = 512;
 	const int maxFrames = colors.size();
 	const int maxSaves = maxFrames / saveEveryNFrames;
