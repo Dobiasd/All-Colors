@@ -116,17 +116,17 @@ double ColorDiff(Color bgr1, Color bgr2)
 }
 
 double ColorPosDiff(const Mat& image, Pos pos, Color color,
-	                const Mat& weights, const Mat& avgs)
+//	                const Mat& weights, const Mat& avgs)
+		            const Mat&, const Mat&)
 {
 	PosComponent x, y;
 	tie(x, y) = pos;
-
 	{
-		double colorCount = weights.at<float>(y, x);
+		/*double colorCount = weights.at<float>(y, x);
 		double diff = colorCount * ColorDiff(color, GetPixel(avgs, pos));
 		double divisor = std::max(colorCount, 1.0);
 		double result = diff/(divisor*divisor);
-		if (false) return result;
+		if (false) return result;*/
 	}
 
 	double diff = 0;
@@ -295,7 +295,7 @@ int main(int argc, char *argv[])
 	Mat avgs;
 	Mat weights;
 
-	updateCacheImgs(image, weights, avgs, Pos(1, 1));
+	//updateCacheImgs(image, weights, avgs, Pos(1, 1));
 
 	const int saveEveryNFrames = 512;
 	const int maxFrames = colors.size();
@@ -310,7 +310,7 @@ int main(int argc, char *argv[])
 		assert(nextPositionsIt != nextPositions.end());
 		nextPositions.erase(nextPositionsIt);
 		SetPixel(image, pos.first, pos.second, color);
-		updateCacheImgs(image, weights, avgs, pos);
+		//updateCacheImgs(image, weights, avgs, pos);
 		set<Pos> newFreePos = GetFreeNeighbours(image, pos);
 		nextPositions.insert(newFreePos.begin(), newFreePos.end());
 		if (colors.size() % saveEveryNFrames == 0)
