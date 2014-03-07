@@ -15,15 +15,16 @@
 using namespace cv;
 using namespace std;
 
-typedef int16_t Channel;
-typedef int16_t PosComponent;
+typedef unsigned char Channel;
+typedef int PosComponent;
 
-const int ImageType = CV_16SC3;
+const int ImageType = CV_8UC3;
 
+typedef Vec<double, 3> ColorDouble;
 typedef Vec<Channel, 3> Color;
 typedef pair<PosComponent, PosComponent> Pos;
 
-Channel invalidColor = -1;
+Channel invalidColor = 0;
 
 void SetPixel(Mat& image, PosComponent x, PosComponent y, const Color& color)
 {
@@ -35,14 +36,23 @@ Color GetPixel(const Mat& image, PosComponent x, PosComponent y)
 	return image.at<Color>(y, x);
 }
 
+Color GetPixel(const Mat& image, const Pos& pos)
+{
+	PosComponent x, y;
+	tie(x, y) = pos;
+	return GetPixel(image, x, y);
+}
+
+const PosComponent spread = 1;
+
 set<Pos> GetFreeNeighbours(const Mat& image, Pos pos)
 {
 	PosComponent x, y;
 	tie(x, y) = pos;
 	vector<Pos> neighbours;
 	neighbours.reserve(8);
-	for (PosComponent nx = x-1; nx <= x+1; ++nx)
-		for (PosComponent ny = y-1; ny <= y+1; ++ny)
+	for (PosComponent nx = x-spread; nx <= x+spread; ++nx)
+		for (PosComponent ny = y-spread; ny <= y+spread; ++ny)
 			neighbours.push_back(Pos(nx, ny));
 	set<Pos> result;
 	copy_if(neighbours.begin(), neighbours.end(), inserter(result, result.begin()), [&image](Pos pos) -> bool
@@ -68,28 +78,32 @@ const T& max3(const T& a, const T& b, const T& c)
     return std::max(std::max(a, b), c);
 }
 
-Color bgr2hsv(Color bgr)
+ColorDouble bgr2hsv(Color bgr)
 {
-	Channel b = bgr[0];
-	Channel g = bgr[1];
-	Channel r = bgr[2];
-	Channel v = max3(r, g, b);
-	Channel s = v == 0 ? 0 : (v - min3(r, g, b))/v;
-	Channel h = 0;
-	Channel divisor = v - min3(r,g,b);
+	Channel bc = bgr[0];
+	Channel gc = bgr[1];
+	Channel rc = bgr[2];
+	double b = bc / 255.0;
+	double g = gc / 255.0;
+	double r = rc / 255.0;
+	Channel maxc = max3(rc, gc, bc);
+	double v = max3(r, g, b);
+	double s = v == 0 ? 0 : (v - min3(r, g, b))/v;
+	double h = 0;
+	double divisor = v - min3(r, g, b);
 	if (divisor == 0)
-		return Color(0, 0, 0);
-	if (v == r)
+		return ColorDouble(0, 0, 0);
+	if (maxc == rc)
 		h = 60*(g-b)/divisor;
-	else if (v == g)
+	else if (maxc == gc)
 		h = 120 + 60*(b-r)/divisor;
-	else if (v == b)
+	else if (maxc == bc)
 		h = 240 + 60*(r-g)/divisor;
 	else
 		assert(false); // If we land here our v is incorrect.
 	if (h < 0)
 		h += 360;
-	return Color(h, s, v);
+	return ColorDouble(h, s, v);
 }
 
 double ColorDiff(Color bgr1, Color bgr2)
@@ -98,44 +112,56 @@ double ColorDiff(Color bgr1, Color bgr2)
 	double dg = bgr2[1] - bgr1[1];
 	double dr = bgr2[2] - bgr1[2];
 	return sqrt(db*db + dg*dg + dr*dr);
+	//return abs(db) + abs(dg) + abs(dr);
 }
 
-double ColorPosDiff(const Mat& image, Pos pos, Color color)
+double ColorPosDiff(const Mat& image, Pos pos, Color color,
+	                const Mat& weights, const Mat& avgs)
 {
 	PosComponent x, y;
 	tie(x, y) = pos;
-	double result = 0;
-	int colorCount = 0;
-	for (PosComponent nx = x-1; nx <= x+1; ++nx)
+
 	{
-		for (PosComponent ny = y-1; ny <= y+1; ++ny)
+		double colorCount = weights.at<float>(y, x);
+		double diff = colorCount * ColorDiff(color, GetPixel(avgs, pos));
+		double divisor = std::max(colorCount, 1.0);
+		double result = diff/(divisor*divisor);
+		if (false) return result;
+	}
+
+	double diff = 0;
+	int colorCount = 0;
+	for (PosComponent nx = x-spread; nx <= x+spread; ++nx)
+	{
+		for (PosComponent ny = y-spread; ny <= y+spread; ++ny)
 		{
 			if (nx < 0 || nx >= image.cols || ny < 0 || ny >= image.rows)
 				continue;
 			Color pixelColor = GetPixel(image, nx, ny);
 			if (pixelColor[0] == invalidColor)
 				continue;
-			result += ColorDiff(color, pixelColor);
+			diff += ColorDiff(color, pixelColor);
 			++colorCount;
 		}
 	}
 	// Avoid division by zero.
-	colorCount = std::max(colorCount, 1);
-	//return result/colorCount;
+	double divisor = std::max(colorCount, 1);
+	//return diff/divisor;
 	// Square divisor to avoid coral like growing.
 	// This also reduces the number of currently open border pixels.
-	return result/(colorCount*colorCount);
+	return diff/(divisor*divisor);
 }
 
 
 
-Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color)
+Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color,
+	            const Mat& weights, const Mat& avgs)
 {
 	vector<pair<double, Pos>> ratedPositions;
 	ratedPositions.reserve(nextPositions.size());
 	transform(nextPositions.begin(), nextPositions.end(), back_inserter(ratedPositions), [&](Pos pos) -> pair<double, Pos>
 	{
-		return make_pair(ColorPosDiff(image, pos, color), pos);
+		return make_pair(ColorPosDiff(image, pos, color, weights, avgs), pos);
 	});
 	random_shuffle(ratedPositions.begin(), ratedPositions.end());
 	return min_element(ratedPositions.begin(), ratedPositions.end(),
@@ -165,22 +191,80 @@ pair<Mat, set<Pos>> Init(int argc, char *argv[])
 	}
 
 	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor));
-	set<Pos> nextPositions;
-	nextPositions.insert(Pos(  image.cols/3, image.rows/2));
-	nextPositions.insert(Pos(2*image.cols/3, image.rows/2));
-	return make_pair(image, nextPositions);
+
+	set<Pos> initPositions;
+	initPositions.insert(Pos(0.33*image.cols, 0.36*image.rows));
+	initPositions.insert(Pos(0.67*image.cols, 0.36*image.rows));
+	initPositions.insert(Pos(0.36*image.cols, 0.64*image.rows));
+	initPositions.insert(Pos(0.64*image.cols, 0.64*image.rows));
+
+	return make_pair(image, initPositions);
+
+/*	set<Pos> nextPositions;
+	for_each(initPositions.begin(), initPositions.end(), [&](const Pos& pos)
+	{
+		PosComponent x, y;
+		tie(x, y) = pos;
+		for (PosComponent nx = x-spread*2; nx <= x+spread*2; ++nx)
+			for (PosComponent ny = y-spread*2; ny <= y+spread*2; ++ny)
+				nextPositions.insert(Pos(nx, ny));
+	});
+
+	return make_pair(image, nextPositions);*/
 }
 
-
+void updateCacheImgs(const Mat& image, Mat& weights, Mat& avgs, Pos pos)
+{
+	int x, y;
+	tie(x, y) = pos;
+	int x1 = max(0, x - 2);
+	int x2 = min(image.cols, x + 2);
+	int y1 = max(0, y - 2);
+	int y2 = min(image.cols, y + 2);
+	Rect bigRoi(Point(x1, y1), Point(x2, y2));
+	if (weights.rows != image.rows || weights.cols != image.cols)
+	{
+		weights = Mat(image.size(), CV_32FC1, Scalar(0));
+		bigRoi = Rect(Point(0,0), Point(image.cols, image.rows));
+	}
+	if (avgs.rows != image.rows || avgs.cols != image.cols)
+	{
+		avgs = Mat(image.size(), CV_8UC3, Scalar(0));
+		bigRoi = Rect(Point(0,0), Point(image.cols, image.rows));
+	}
+	Mat bigRoiImgOrig = image(bigRoi);
+	Mat bigRoiImg;
+	bigRoiImgOrig.convertTo(bigRoiImg, CV_32FC3);
+	Mat bigRoiImgBW;
+	cvtColor(bigRoiImg, bigRoiImgBW, CV_BGR2GRAY);
+	Mat bigRoiImgThres;
+	threshold(bigRoiImgBW, bigRoiImgThres, 1, 1, THRESH_BINARY);
+	Mat bigRoiWeights;
+	boxFilter(bigRoiImgThres, bigRoiWeights, -1, Size(3, 3), Point(-1, -1), false);
+	Mat bigRoiSum;
+	boxFilter(bigRoiImg, bigRoiSum, -1, Size(3, 3), Point(-1, -1), false);
+	Mat bigRoiAvgs;
+	Mat bigRoiWeights3C;
+	cvtColor(bigRoiWeights, bigRoiWeights3C, CV_GRAY2BGR);
+	divide(bigRoiSum, bigRoiWeights3C, bigRoiAvgs);
+	bigRoiWeights.copyTo(weights(bigRoi));
+	Mat bigRoiAvgs8U;
+	bigRoiAvgs.convertTo(bigRoiAvgs8U, CV_8UC3);
+	//Mat bigRoiAvgs8UOnes(bigRoiAvgs8U.size(), bigRoiAvgs8U.type(), Scalar(1));
+	//Mat bigRoiAvgs8Up1;
+	//add(bigRoiAvgs8U, bigRoiAvgs8UOnes, bigRoiAvgs8Up1);
+	//bigRoiAvgs8Up1.copyTo(avgs(bigRoi));
+	bigRoiAvgs8U.copyTo(avgs(bigRoi));
+}
 
 int main(int argc, char *argv[])
 {
 	vector<Color> colors;
-	Channel colValues = 64;
-	Channel colMult = 4;
-	for(Channel b = 0; b < colValues; ++b)
-		for(Channel g = 0; g < 2*colValues; ++ g)
-			for(Channel r = 0; r < 2*colValues; ++ r)
+	int colValues = 64;
+	int colMult = 4;
+	for(int b = 1; b < colValues; ++b)
+		for(int g = 1; g < 2*colValues; ++g)
+			for(int r = 1; r < 2*colValues; ++r)
 				colors.push_back(Color(colMult*b, colMult*g/2, colMult*r/2));
 
 	{
@@ -191,14 +275,19 @@ int main(int argc, char *argv[])
 
 	sort(colors.begin(), colors.end(), [](Color bgr1, Color bgr2) -> bool
 	{
-		Color hsv1 = bgr2hsv(bgr1);
-		Color hsv2 = bgr2hsv(bgr2);
+		ColorDouble hsv1 = bgr2hsv(bgr1);
+		ColorDouble hsv2 = bgr2hsv(bgr2);
 		return hsv1[0] < hsv2[0];
 	});
 
 	Mat image;
 	set<Pos> nextPositions;
 	tie(image, nextPositions) = Init(argc, argv);
+
+	Mat avgs;
+	Mat weights;
+
+	updateCacheImgs(image, weights, avgs, Pos(-1, -1));
 
 	const int saveEveryNFrames = 512;
 	const int maxFrames = colors.size();
@@ -208,11 +297,12 @@ int main(int argc, char *argv[])
 	{
 		Color color = colors.back();
 		colors.pop_back();
-		Pos pos = FindBestPos(image, nextPositions, color);
+		Pos pos = FindBestPos(image, nextPositions, color, weights, avgs);
 		auto nextPositionsIt = nextPositions.find(pos);
 		assert(nextPositionsIt != nextPositions.end());
 		nextPositions.erase(nextPositionsIt);
 		SetPixel(image, pos.first, pos.second, color);
+		updateCacheImgs(image, weights, avgs, pos);
 		set<Pos> newFreePos = GetFreeNeighbours(image, pos);
 		nextPositions.insert(newFreePos.begin(), newFreePos.end());
 		if (colors.size() % saveEveryNFrames == 0)
@@ -246,6 +336,9 @@ int main(int argc, char *argv[])
 
 			//ffmpeg -r 50 -i output/image%04d.png -vcodec libx264 -preset veryslow -qp 0 output/video.mp4
 			imwrite("./output/image" + ss.str() + ".png", mixed);
+
+			//imwrite("avgs.png", avgs);
+			//imwrite("weights.png", weights);
 		}
 	}
 }
