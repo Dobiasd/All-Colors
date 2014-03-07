@@ -217,11 +217,18 @@ void updateCacheImgs(const Mat& image, Mat& weights, Mat& avgs, Pos pos)
 {
 	int x, y;
 	tie(x, y) = pos;
-	int x1 = max(0, x - 2);
-	int x2 = min(image.cols, x + 2);
-	int y1 = max(0, y - 2);
-	int y2 = min(image.cols, y + 2);
-	Rect bigRoi(Point(x1, y1), Point(x2, y2));
+	int x1 = max(0, x - spread);
+	int x2 = min(image.cols, x + spread + 1);
+	int y1 = max(0, y - spread);
+	int y2 = min(image.rows, y + spread + 1);
+	Rect roi(Point(x1, y1), Point(x2, y2));
+
+	PosComponent bigSpread = spread + 1;
+	int x1big = max(0, x - bigSpread);
+	int x2big = min(image.cols, x + bigSpread + 1);
+	int y1big = max(0, y - bigSpread);
+	int y2big = min(image.rows, y + bigSpread + 1);
+	Rect bigRoi(Point(x1big, y1big), Point(x2big, y2big));
 	if (weights.rows != image.rows || weights.cols != image.cols)
 	{
 		weights = Mat(image.size(), CV_32FC1, Scalar(0));
@@ -247,14 +254,15 @@ void updateCacheImgs(const Mat& image, Mat& weights, Mat& avgs, Pos pos)
 	Mat bigRoiWeights3C;
 	cvtColor(bigRoiWeights, bigRoiWeights3C, CV_GRAY2BGR);
 	divide(bigRoiSum, bigRoiWeights3C, bigRoiAvgs);
-	bigRoiWeights.copyTo(weights(bigRoi));
+	Rect bigRoiRoi(Point(1, 1), Point(1 + 1 + 2*spread, 1 + 1 + 2*spread));
+	bigRoiWeights(bigRoiRoi).copyTo(weights(roi));
 	Mat bigRoiAvgs8U;
 	bigRoiAvgs.convertTo(bigRoiAvgs8U, CV_8UC3);
 	//Mat bigRoiAvgs8UOnes(bigRoiAvgs8U.size(), bigRoiAvgs8U.type(), Scalar(1));
 	//Mat bigRoiAvgs8Up1;
 	//add(bigRoiAvgs8U, bigRoiAvgs8UOnes, bigRoiAvgs8Up1);
 	//bigRoiAvgs8Up1.copyTo(avgs(bigRoi));
-	bigRoiAvgs8U.copyTo(avgs(bigRoi));
+	bigRoiAvgs8U(bigRoiRoi).copyTo(avgs(roi));
 }
 
 int main(int argc, char *argv[])
@@ -287,7 +295,7 @@ int main(int argc, char *argv[])
 	Mat avgs;
 	Mat weights;
 
-	updateCacheImgs(image, weights, avgs, Pos(-1, -1));
+	updateCacheImgs(image, weights, avgs, Pos(1, 1));
 
 	const int saveEveryNFrames = 512;
 	const int maxFrames = colors.size();
