@@ -219,8 +219,8 @@ int main()
 	//Mat image = Mat(720 , 1280, ImageType, Scalar_<Channel>(invalidColor)); Channel colValues = 16; Channel colMult = 16;
 	for(Channel b = 0; b < colValues; ++b)
 		for(Channel g = 0; g < 2*colValues; ++ g)
-			for(Channel r = 0; r < colValues; ++ r)
-				colors.push_back(Color(colMult*b, colMult*g/2, colMult*r));
+			for(Channel r = 0; r < 2*colValues; ++ r)
+				colors.push_back(Color(colMult*b, colMult*g/2, colMult*r/2));
 
 	random_shuffle(colors.begin(), colors.end());
 
