@@ -222,7 +222,11 @@ int main()
 			for(Channel r = 0; r < 2*colValues; ++ r)
 				colors.push_back(Color(colMult*b, colMult*g/2, colMult*r/2));
 
-	random_shuffle(colors.begin(), colors.end());
+	{
+		std::random_device rd;
+		std::mt19937 g(rd());
+		std::shuffle(colors.begin(), colors.end(), g);
+	}
 
 	sort(colors.begin(), colors.end(), [](Color bgr1, Color bgr2) -> bool
 	{
