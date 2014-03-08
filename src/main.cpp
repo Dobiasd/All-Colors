@@ -155,7 +155,7 @@ double ColorPosDiff(const Mat& image, Pos pos, Color color,
 
 
 Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color,
-	            const Mat& weights, const Mat& avgs)
+				mt19937& g, const Mat& weights, const Mat& avgs)
 {
 	vector<pair<double, Pos>> ratedPositions;
 	ratedPositions.reserve(nextPositions.size());
@@ -163,7 +163,7 @@ Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color,
 	{
 		return make_pair(ColorPosDiff(image, pos, color, weights, avgs), pos);
 	});
-	random_shuffle(ratedPositions.begin(), ratedPositions.end());
+	shuffle(ratedPositions.begin(), ratedPositions.end(), g);
 	return min_element(ratedPositions.begin(), ratedPositions.end(),
 		[](const pair<double, Pos>& ratedPos1, const pair<double, Pos>& ratedPos2)
 	{
@@ -193,24 +193,31 @@ pair<Mat, set<Pos>> Init(int argc, char *argv[])
 	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor));
 
 	set<Pos> initPositions;
-	initPositions.insert(Pos(0.33*image.cols, 0.36*image.rows));
+	initPositions.insert(Pos(0.33*image.cols, 0.5*image.rows));
+	initPositions.insert(Pos(0.67*image.cols, 0.5*image.rows));
+	/*initPositions.insert(Pos(0.33*image.cols, 0.4*image.rows));
+	initPositions.insert(Pos(0.67*image.cols, 0.4*image.rows));
+	initPositions.insert(Pos(0.50*image.cols, 0.69*image.rows));*/
+	/*initPositions.insert(Pos(0.33*image.cols, 0.36*image.rows));
 	initPositions.insert(Pos(0.67*image.cols, 0.36*image.rows));
 	initPositions.insert(Pos(0.36*image.cols, 0.64*image.rows));
-	initPositions.insert(Pos(0.64*image.cols, 0.64*image.rows));
+	initPositions.insert(Pos(0.64*image.cols, 0.64*image.rows));*/
 
-	return make_pair(image, initPositions);
+	//return make_pair(image, initPositions);
 
-/*	set<Pos> nextPositions;
+	set<Pos> nextPositions;
 	for_each(initPositions.begin(), initPositions.end(), [&](const Pos& pos)
 	{
+		PosComponent plusLength = 8;
 		PosComponent x, y;
 		tie(x, y) = pos;
-		for (PosComponent nx = x-spread*2; nx <= x+spread*2; ++nx)
-			for (PosComponent ny = y-spread*2; ny <= y+spread*2; ++ny)
-				nextPositions.insert(Pos(nx, ny));
+		for (PosComponent nx = x-plusLength; nx <= x+plusLength; ++nx)
+			nextPositions.insert(Pos(nx, y));
+		for (PosComponent ny = y-plusLength; ny <= y+plusLength; ++ny)
+			nextPositions.insert(Pos(x, ny));
 	});
 
-	return make_pair(image, nextPositions);*/
+	return make_pair(image, nextPositions);
 }
 
 void updateCacheImgs(const Mat& image, Mat& weights, Mat& avgs, Pos pos)
@@ -275,11 +282,9 @@ int main(int argc, char *argv[])
 			for(int r = 1; r < 2*colValues; ++r)
 				colors.push_back(Color(colMult*b, colMult*g/2, colMult*r/2));
 
-	{
-		std::random_device rd;
-		std::mt19937 g(rd());
-		std::shuffle(colors.begin(), colors.end(), g);
-	}
+	random_device rd;
+	mt19937 g(rd());
+	shuffle(colors.begin(), colors.end(), g);
 
 	sort(colors.begin(), colors.end(), [](Color bgr1, Color bgr2) -> bool
 	{
@@ -305,7 +310,7 @@ int main(int argc, char *argv[])
 	{
 		Color color = colors.back();
 		colors.pop_back();
-		Pos pos = FindBestPos(image, nextPositions, color, weights, avgs);
+		Pos pos = FindBestPos(image, nextPositions, color, g, weights, avgs);
 		auto nextPositionsIt = nextPositions.find(pos);
 		assert(nextPositionsIt != nextPositions.end());
 		nextPositions.erase(nextPositionsIt);
