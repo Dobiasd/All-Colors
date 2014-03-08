@@ -183,32 +183,46 @@ set<Pos> NonBlackPositions(const Mat& img)
 
 pair<Mat, set<Pos>> Init(int argc, char *argv[])
 {
+	/*
 	if (argc > 1)
 	{
 		Mat src = imread(argv[1], CV_LOAD_IMAGE_GRAYSCALE);
 		Mat image = Mat(src.size(), ImageType, Scalar_<Channel>(invalidColor));
 		return make_pair(image, NonBlackPositions(src));
-	}
+	}*/
 
 	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor));
 
+	int num = 2;
+	if (argc > 1 && string(argv[1]) == "3") num = 3;
+	if (argc > 1 && string(argv[1]) == "4") num = 4;
+
 	set<Pos> initPositions;
-	initPositions.insert(Pos(0.33*image.cols, 0.5*image.rows));
-	initPositions.insert(Pos(0.67*image.cols, 0.5*image.rows));
-	/*initPositions.insert(Pos(0.33*image.cols, 0.4*image.rows));
-	initPositions.insert(Pos(0.67*image.cols, 0.4*image.rows));
-	initPositions.insert(Pos(0.50*image.cols, 0.69*image.rows));*/
-	/*initPositions.insert(Pos(0.33*image.cols, 0.36*image.rows));
-	initPositions.insert(Pos(0.67*image.cols, 0.36*image.rows));
-	initPositions.insert(Pos(0.36*image.cols, 0.64*image.rows));
-	initPositions.insert(Pos(0.64*image.cols, 0.64*image.rows));*/
+	if (num == 2)
+	{
+		initPositions.insert(Pos(0.33*image.cols, 0.5*image.rows));
+		initPositions.insert(Pos(0.67*image.cols, 0.5*image.rows));
+	}
+	else if (num == 3)
+	{
+		initPositions.insert(Pos(0.33*image.cols, 0.4*image.rows));
+		initPositions.insert(Pos(0.67*image.cols, 0.4*image.rows));
+		initPositions.insert(Pos(0.50*image.cols, 0.69*image.rows));
+	}
+	else if (num == 4)
+	{
+		initPositions.insert(Pos(0.33*image.cols, 0.36*image.rows));
+		initPositions.insert(Pos(0.67*image.cols, 0.36*image.rows));
+		initPositions.insert(Pos(0.36*image.cols, 0.64*image.rows));
+		initPositions.insert(Pos(0.64*image.cols, 0.64*image.rows));
+	}
 
 	//return make_pair(image, initPositions);
 
 	set<Pos> nextPositions;
 	for_each(initPositions.begin(), initPositions.end(), [&](const Pos& pos)
 	{
-		PosComponent plusLength = 8;
+		PosComponent plusLength = 5;
 		PosComponent x, y;
 		tie(x, y) = pos;
 		for (PosComponent nx = x-plusLength; nx <= x+plusLength; ++nx)
@@ -283,7 +297,7 @@ int main(int argc, char *argv[])
 				colors.push_back(Color(colMult*b, colMult*g/2, colMult*r/2));
 
 	random_device rd;
-	mt19937 g(rd());
+	mt19937 g(1);
 	shuffle(colors.begin(), colors.end(), g);
 
 	sort(colors.begin(), colors.end(), [](Color bgr1, Color bgr2) -> bool
