@@ -28,5 +28,5 @@ scons
 Usage
 -----
 ```
-scons
+./release/AllColors 4
 ```
