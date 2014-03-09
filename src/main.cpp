@@ -112,22 +112,12 @@ double ColorDiff(Color bgr1, Color bgr2)
 	double dg = bgr2[1] - bgr1[1];
 	double dr = bgr2[2] - bgr1[2];
 	return sqrt(db*db + dg*dg + dr*dr);
-	//return abs(db) + abs(dg) + abs(dr);
 }
 
-double ColorPosDiff(const Mat& image, Pos pos, Color color,
-//	                const Mat& weights, const Mat& avgs)
-		            const Mat&, const Mat&)
+double ColorPosDiff(const Mat& image, Pos pos, Color color)
 {
 	PosComponent x, y;
 	tie(x, y) = pos;
-	{
-		/*double colorCount = weights.at<float>(y, x);
-		double diff = colorCount * ColorDiff(color, GetPixel(avgs, pos));
-		double divisor = std::max(colorCount, 1.0);
-		double result = diff/(divisor*divisor);
-		if (false) return result;*/
-	}
 
 	double diff = 0;
 	int colorCount = 0;
@@ -146,28 +136,26 @@ double ColorPosDiff(const Mat& image, Pos pos, Color color,
 	}
 	// Avoid division by zero.
 	double divisor = std::max(colorCount, 1);
-	//return diff/divisor;
 	// Square divisor to avoid coral like growing.
 	// This also reduces the number of currently open border pixels.
 	return diff/(divisor*divisor);
 }
 
-
-
 Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color,
-				mt19937& g, const Mat& weights, const Mat& avgs)
+				mt19937& g)
 {
 	vector<pair<double, Pos>> ratedPositions;
 	ratedPositions.reserve(nextPositions.size());
-	transform(nextPositions.begin(), nextPositions.end(), back_inserter(ratedPositions), [&](Pos pos) -> pair<double, Pos>
+	transform(nextPositions.begin(), nextPositions.end(),
+			back_inserter(ratedPositions), [&](Pos pos) -> pair<double, Pos>
 	{
-		return make_pair(ColorPosDiff(image, pos, color, weights, avgs), pos);
+		return make_pair(ColorPosDiff(image, pos, color), pos);
 	});
 	shuffle(ratedPositions.begin(), ratedPositions.end(), g);
 	return min_element(ratedPositions.begin(), ratedPositions.end(),
-		[](const pair<double, Pos>& ratedPos1, const pair<double, Pos>& ratedPos2)
+		[](const pair<double, Pos>& rp1, const pair<double, Pos>& rp2)
 	{
-		return ratedPos1.first < ratedPos2.first;
+		return rp1.first < rp2.first;
 	})->second;
 }
 
@@ -183,20 +171,25 @@ set<Pos> NonBlackPositions(const Mat& img)
 
 pair<Mat, set<Pos>> Init(int argc, char *argv[])
 {
-	/*
-	if (argc > 1)
+	if (argc < 2)
+	{
+		cout << "Usage: AllColors [2/3/4/imagePath]" << endl;
+		return make_pair(Mat(), set<Pos>());
+	}
+
+	int num = 0;
+	if (argc > 1 && string(argv[1]) == "2") num = 2;
+	if (argc > 1 && string(argv[1]) == "3") num = 3;
+	if (argc > 1 && string(argv[1]) == "4") num = 4;
+
+	if (!num)
 	{
 		Mat src = imread(argv[1], CV_LOAD_IMAGE_GRAYSCALE);
 		Mat image = Mat(src.size(), ImageType, Scalar_<Channel>(invalidColor));
 		return make_pair(image, NonBlackPositions(src));
-	}*/
+	}
 
 	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor));
-
-	int num = 2;
-	if (argc > 1 && string(argv[1]) == "3") num = 3;
-	if (argc > 1 && string(argv[1]) == "4") num = 4;
-
 	set<Pos> initPositions;
 	if (num == 2)
 	{
@@ -217,8 +210,6 @@ pair<Mat, set<Pos>> Init(int argc, char *argv[])
 		initPositions.insert(Pos(0.64*image.cols, 0.64*image.rows));
 	}
 
-	//return make_pair(image, initPositions);
-
 	set<Pos> nextPositions;
 	for_each(initPositions.begin(), initPositions.end(), [&](const Pos& pos)
 	{
@@ -230,64 +221,44 @@ pair<Mat, set<Pos>> Init(int argc, char *argv[])
 		for (PosComponent ny = y-plusLength; ny <= y+plusLength; ++ny)
 			nextPositions.insert(Pos(x, ny));
 	});
-
 	return make_pair(image, nextPositions);
 }
 
-void updateCacheImgs(const Mat& image, Mat& weights, Mat& avgs, Pos pos)
+Mat Embellish(const Mat& image)
 {
-	int x, y;
-	tie(x, y) = pos;
-	int x1 = max(0, x - spread);
-	int x2 = min(image.cols, x + spread + 1);
-	int y1 = max(0, y - spread);
-	int y2 = min(image.rows, y + spread + 1);
-	Rect roi(Point(x1, y1), Point(x2, y2));
+	Mat ucharImg;
+	image.convertTo(ucharImg, CV_8UC3);
 
-	PosComponent bigSpread = spread + 1;
-	int x1big = max(0, x - bigSpread);
-	int x2big = min(image.cols, x + bigSpread + 1);
-	int y1big = max(0, y - bigSpread);
-	int y2big = min(image.rows, y + bigSpread + 1);
-	Rect bigRoi(Point(x1big, y1big), Point(x2big, y2big));
-	if (weights.rows != image.rows || weights.cols != image.cols)
-	{
-		weights = Mat(image.size(), CV_32FC1, Scalar(0));
-		bigRoi = Rect(Point(0,0), Point(image.cols, image.rows));
-	}
-	if (avgs.rows != image.rows || avgs.cols != image.cols)
-	{
-		avgs = Mat(image.size(), CV_8UC3, Scalar(0));
-		bigRoi = Rect(Point(0,0), Point(image.cols, image.rows));
-	}
-	Mat bigRoiImgOrig = image(bigRoi);
-	Mat bigRoiImg;
-	bigRoiImgOrig.convertTo(bigRoiImg, CV_32FC3);
-	Mat bigRoiImgBW;
-	cvtColor(bigRoiImg, bigRoiImgBW, CV_BGR2GRAY);
-	Mat bigRoiImgThres;
-	threshold(bigRoiImgBW, bigRoiImgThres, 1, 1, THRESH_BINARY);
-	Mat bigRoiWeights;
-	boxFilter(bigRoiImgThres, bigRoiWeights, -1, Size(3, 3), Point(-1, -1), false);
-	Mat bigRoiSum;
-	boxFilter(bigRoiImg, bigRoiSum, -1, Size(3, 3), Point(-1, -1), false);
-	Mat bigRoiAvgs;
-	Mat bigRoiWeights3C;
-	cvtColor(bigRoiWeights, bigRoiWeights3C, CV_GRAY2BGR);
-	divide(bigRoiSum, bigRoiWeights3C, bigRoiAvgs);
-	Rect bigRoiRoi(Point(1, 1), Point(1 + 1 + 2*spread, 1 + 1 + 2*spread));
-	bigRoiWeights(bigRoiRoi).copyTo(weights(roi));
-	Mat bigRoiAvgs8U;
-	bigRoiAvgs.convertTo(bigRoiAvgs8U, CV_8UC3);
-	//Mat bigRoiAvgs8UOnes(bigRoiAvgs8U.size(), bigRoiAvgs8U.type(), Scalar(1));
-	//Mat bigRoiAvgs8Up1;
-	//add(bigRoiAvgs8U, bigRoiAvgs8UOnes, bigRoiAvgs8Up1);
-	//bigRoiAvgs8Up1.copyTo(avgs(bigRoi));
-	bigRoiAvgs8U(bigRoiRoi).copyTo(avgs(roi));
+	Mat filtered;
+	dilate(ucharImg, filtered, Mat(3, 3, CV_8UC1, Scalar(1)));
+	medianBlur(filtered, filtered, 3);
+
+	Mat ts;
+	vector<Mat> imageChans(3, Mat());
+	split(image, imageChans);
+	threshold(imageChans[0], ts, invalidColor, 1, THRESH_BINARY_INV);
+	Mat tu;
+	ts.convertTo(tu, CV_8UC1);
+	Mat tuchar;
+	cvtColor(tu, tuchar, CV_GRAY2BGR);
+
+	Mat m;
+	multiply(filtered, tuchar, m);
+
+	// fill black gaps, but only with half the median color.
+	Mat mixed;
+	addWeighted(ucharImg, 1.0, m, 0.5, 0.0, mixed);
+	return mixed;
 }
 
 int main(int argc, char *argv[])
 {
+	Mat image;
+	set<Pos> nextPositions;
+	tie(image, nextPositions) = Init(argc, argv);
+	if (!image.rows)
+		return 1;
+
 	vector<Color> colors;
 	int colValues = 64;
 	int colMult = 4;
@@ -307,15 +278,6 @@ int main(int argc, char *argv[])
 		return hsv1[0] < hsv2[0];
 	});
 
-	Mat image;
-	set<Pos> nextPositions;
-	tie(image, nextPositions) = Init(argc, argv);
-
-	Mat avgs;
-	Mat weights;
-
-	//updateCacheImgs(image, weights, avgs, Pos(1, 1));
-
 	const int saveEveryNFrames = 512;
 	const int maxFrames = colors.size();
 	const int maxSaves = maxFrames / saveEveryNFrames;
@@ -324,48 +286,20 @@ int main(int argc, char *argv[])
 	{
 		Color color = colors.back();
 		colors.pop_back();
-		Pos pos = FindBestPos(image, nextPositions, color, g, weights, avgs);
+		Pos pos = FindBestPos(image, nextPositions, color, g);
 		auto nextPositionsIt = nextPositions.find(pos);
 		assert(nextPositionsIt != nextPositions.end());
 		nextPositions.erase(nextPositionsIt);
 		SetPixel(image, pos.first, pos.second, color);
-		//updateCacheImgs(image, weights, avgs, pos);
 		set<Pos> newFreePos = GetFreeNeighbours(image, pos);
 		nextPositions.insert(newFreePos.begin(), newFreePos.end());
 		if (colors.size() % saveEveryNFrames == 0)
 		{
 			stringstream ss;
 			ss << setw(4) << setfill('0') << ++imgNum;
-
 			cout << imgNum << "/" << maxSaves << " " << colors.size() << " " << nextPositions.size() << endl;
-			Mat ucharImg;
-			image.convertTo(ucharImg, CV_8UC3);
-
-			Mat filtered;
-			dilate(ucharImg, filtered, Mat(3, 3, CV_8UC1, Scalar(1)));
-			medianBlur(filtered, filtered, 3);
-
-			Mat ts;
-			vector<Mat> imageChans(3, Mat());
-			split(image, imageChans);
-			threshold(imageChans[0], ts, invalidColor, 1, THRESH_BINARY_INV);
-			Mat tu;
-			ts.convertTo(tu, CV_8UC1);
-			Mat tuchar;
-			cvtColor(tu, tuchar, CV_GRAY2BGR);
-
-			Mat m;
-			multiply(filtered, tuchar, m);
-
-			// fill black gaps, but only with half the median color.
-			Mat mixed;
-			addWeighted(ucharImg, 1.0, m, 0.5, 0.0, mixed);
-
-			//ffmpeg -r 50 -i output/image%04d.png -vcodec libx264 -preset veryslow -qp 0 output/video.mp4
-			imwrite("./output/image" + ss.str() + ".png", mixed);
-
-			//imwrite("avgs.png", avgs);
-			//imwrite("weights.png", weights);
+			Mat outImage = Embellish(image);
+			imwrite("./output/image" + ss.str() + ".png", outImage);
 		}
 	}
 }
