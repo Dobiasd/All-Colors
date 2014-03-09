@@ -30,3 +30,10 @@ Usage
 ```
 ./release/AllColors 4
 ```
+
+Images will be written to the `output` directory. (But prepare to wait quite some time.)
+
+In case you want to create a video from all the images afterwards:
+```
+ffmpeg -r 50 -i output/image%04d.png -vcodec libx264 -preset veryslow -qp 0 output/video.mp4
+```
