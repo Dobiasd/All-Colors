@@ -7,7 +7,7 @@ It is heavily based on a great [Idea of József Fejes](http://joco.name/2014/03/
 [![(Picture missing, uh oh)](doc/all_colors_s0_4_golden_158.jpg)][output]
 [output]: doc/all_colors_s0_4_golden_158.jpg
 
-[![Video](http://img.youtube.com/vi/aVV7a8ueHEo/0.jpg)](http://www.youtube.com/watch?v=aVV7a8ueHEo)
+[video on youtube](http://img.youtube.com/vi/aVV7a8ueHEo/0.jpg)
 
 
 Dependencies
