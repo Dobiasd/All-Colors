@@ -43,11 +43,22 @@ ffmpeg -r 50 -i output/image%04d.png -vcodec libx264 -preset veryslow -qp 0 outp
 How does it work?
 -----------------
 
-First, the [RGB cube](http://en.wikipedia.org/wiki/RGB_color_space) is walked with three nested loops, to produce a list of all possible colors. This List is then shuffled and sorted by [hue](http://en.wikipedia.org/wiki/Hue).
-Additionally a set of all posssible next positions in the destination image is initalized with some fixed points (2, 3 or 4) or a binary input image.
+First, the [RGB cube](http://en.wikipedia.org/wiki/RGB_color_space) is walked
+with three nested loops, to produce a list of all possible colors.
+This List is then shuffled and sorted by [hue](http://en.wikipedia.org/wiki/Hue).
+Additionally a set of all posssible next positions in the destination image is
+initalized with some fixed points (2, 3 or 4) or a binary input image.
 
-The colors are then placed into the image one after another to one of the possible positions. This position list is constantly updated after every iteration.
+The colors are then placed into the image one after another to one of the
+possible positions. This position list is constantly updated after every
+iteration
 
-The decision which next possible position to use for the color just popped from the queue is where all the fun happens. The position is chosen by selecting the one with the smallest average euclidian RGB difference to the 8-neighbourhood (only aleady filled pixels) divided by the count of filled neighbours. The division avoids coral like growing and ensures a more compact shape to emerge.
+The decision which next possible position to use for the color just popped from
+the queue is where all the fun happens. The position is chosen by selecting the
+one with the smallest average euclidian RGB difference to the 8-neighbourhood
+(only aleady filled pixels) divided by the count of filled neighbours. The
+division avoids coral like growing and ensures a more compact shape to emerge.
 
-The output images are finally embellished by filling the remaining black gaps with a half transparent version of a dilated and median-filtered version of itself. This way the borders and gaps become more smooth.
+The output images are finally embellished by filling the remaining black gaps
+with a half transparent version of a dilated and median-filtered version of
+itself. This way the borders and gaps become more smooth.
