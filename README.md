@@ -41,6 +41,7 @@ In case you want to create a video from all the images afterwards:
 ffmpeg -r 50 -i output/image%04d.png -vcodec libx264 -preset veryslow -qp 0 output/video.mp4
 ```
 
+
 How does it work?
 -----------------
 
@@ -53,7 +54,9 @@ The decision which next possible position to use for the color just popped from 
 
 The output images are finally embellished by filling the remaining black gaps with a half transparent version of a [dilated](http://en.wikipedia.org/wiki/Dilation_(morphology)) and [median-filtered](http://en.wikipedia.org/wiki/Median_filter) version of itself. This way the borders and gaps become more smooth.
 
+
 Outlook
 -------
+
 The determination of the best fitting position from the list of the next possible ones for a given colour is now `O(n)`, `n` being the number of possible positions, since just a linear search is performed.
 If the next positions were stored in [R-trees](http://en.wikipedia.org/wiki/R-tree), one for all with a specific neighbour count, an nearest neighbour search could be performed in O(log(n)). The search space would have 3*number_of_neighbours dimensions. E.g. the one for the two-neighbour-pixels would have `r1,g1,b1,r2,g2,b2`. Since the divisor (number of neighbours) would be equal for all entries on one search space, only the best fitting positions from every one of the eight trees must be compared linearly. A speedup of about three orders of magnitude can be expected by complexity reduction.
