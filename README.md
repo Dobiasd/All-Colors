@@ -30,6 +30,7 @@ scons
 Usage
 -----
 ```
+mkdir output
 ./release/AllColors 4
 ```
 
