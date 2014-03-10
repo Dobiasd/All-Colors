@@ -48,6 +48,6 @@ Additionally a set of all posssible next positions in the destination image is i
 
 The colors are then placed into the image one after another to one of the possible positions. This position list is constantly updated after every iteration.
 
-The decision which next possible position to use for the color just popped from the queue is where all the fun happens. The position is chosen by selecting the one with the smallest average euclidian RGB difference to the 8-neighbourhood (only aleady filled pixels) divided by the count of filled neighbours. The division avoids coral like growing and ensures a more compact shape to emerge.
+The decision which next possible position to use for the color just popped from the queue is where all the fun happens. The position is chosen by selecting the one with the smallest average euclidian RGB difference to the [8-neighbourhood](http://en.wikipedia.org/wiki/Pixel_connectivity#8-connected) (only aleady filled pixels) divided by the count of filled neighbours. The division avoids coral like growing and ensures a more compact shape to emerge.
 
-The output images are finally embellished by filling the remaining black gaps with a half transparent version of a dilated and median-filtered version of itself. This way the borders and gaps become more smooth.
+The output images are finally embellished by filling the remaining black gaps with a half transparent version of a [dilated](http://en.wikipedia.org/wiki/Dilation_(morphology)) and [median-filtered](http://en.wikipedia.org/wiki/Median_filter) version of itself. This way the borders and gaps become more smooth.
