@@ -4,8 +4,7 @@ All Colors
 A small programm that tries to [draw as many different as possible colors](http://codegolf.stackexchange.com/questions/22144/images-with-all-colors), evenly distributed in the RGB cube, into an pleasent-looking image.
 It is heavily based on a great [idea of József Fejes](http://joco.name/2014/03/02/all-rgb-colors-in-one-image/).
 
-[![(Picture missing, uh oh)](doc/all_colors_s0_4_golden_158.jpg)][output]
-[output]: doc/all_colors_s0_4_golden_158.jpg
+![output](doc/all_colors_s0_4_golden_158.jpg)
 
 [video on youtube](https://www.youtube.com/watch?v=DJmUudaSaIo)
 
