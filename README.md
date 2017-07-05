@@ -12,10 +12,9 @@ It is heavily based on a great [idea of József Fejes](http://joco.name/2014/03/
 Dependencies
 ------------
 - [scons](http://www.scons.org/)
-- [OpenCV](http://opencv.org/)
 
 ```
-sudo apt-get install g++ libopencv-dev scons
+sudo apt-get install scons
 ```
 
 
@@ -30,14 +29,14 @@ Usage
 -----
 ```
 mkdir output
-./release/AllColors 4
+./release/all_colors 4
 ```
 
-Images will be written to the `output` directory. (But prepare to wait quite some time.)
+Images will be written to the `output` directory. (Prepare to wait quite some time.)
 
 In case you want to create a video from all the images afterwards:
 ```
-ffmpeg -r 50 -i output/image%04d.png -vcodec libx264 -preset veryslow -qp 0 output/video.mp4
+ffmpeg -r 50 -i output/image%04d.ppm -vcodec libx264 -preset veryslow -qp 0 output/video.mp4
 ```
 
 

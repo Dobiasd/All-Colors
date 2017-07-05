@@ -1,305 +1,228 @@
+#include "image.h"
+
 #include <algorithm>
 #include <cassert>
-#include <cstdint>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
-#include <list>
 #include <random>
-#include <set>
 #include <sstream>
-#include <tuple>
+#include <string>
+#include <unordered_set>
 
-#include <opencv2/opencv.hpp>
+typedef bgr_color<std::uint8_t> bgr_color_uint8;
+typedef bgr_color<double> bgr_color_double;
+typedef image<bgr_color_uint8> bgr_image_uint8_t;
+typedef std::unordered_set<img_pos> img_position_set;
 
-using namespace cv;
-using namespace std;
+const bgr_color_uint8 invalid_color(0, 0, 0);
+const std::int32_t spread = 1;
 
-typedef unsigned char Channel;
-typedef int PosComponent;
-
-const int ImageType = CV_8UC3;
-
-typedef Vec<double, 3> ColorDouble;
-typedef Vec<Channel, 3> Color;
-typedef pair<PosComponent, PosComponent> Pos;
-
-Channel invalidColor = 0;
-
-void SetPixel(Mat& image, PosComponent x, PosComponent y, const Color& color)
+img_position_set get_free_neighbours(const bgr_image_uint8_t& img,
+    const img_pos& pos)
 {
-	image.at<Color>(y, x) = color;
+    std::vector<img_pos> neighbours;
+    neighbours.reserve(8);
+    for (std::int32_t nx = pos.x_ - spread; nx <= pos.x_ + spread; ++nx)
+        for (std::int32_t ny = pos.y_ - spread; ny <= pos.y_ + spread; ++ny)
+            neighbours.push_back(img_pos(nx, ny));
+    img_position_set result;
+    std::copy_if(
+        neighbours.begin(), neighbours.end(),
+        std::inserter(result, result.begin()),
+        [&img](img_pos pos_n) -> bool
+    {
+        if (pos_n.x_ < 0 || pos_n.x_ >= img.size().width_ ||
+            pos_n.y_ < 0 || pos_n.y_ >= img.size().height_)
+            return false;
+        return img.pixel(pos_n) == invalid_color;
+    });
+    return result;
 }
 
-Color GetPixel(const Mat& image, PosComponent x, PosComponent y)
+double color_pos_difference(const bgr_image_uint8_t& img,
+    const img_pos& pos, const bgr_color_uint8& color)
 {
-	return image.at<Color>(y, x);
+    double diff = 0;
+    int color_count = 0;
+    for (std::int32_t nx = pos.x_ - spread; nx <= pos.x_ + spread; ++nx)
+    {
+        for (std::int32_t ny = pos.y_ - spread; ny <= pos.y_ + spread; ++ny)
+        {
+            if (nx < 0 || nx >= img.size().width_ ||
+                ny < 0 || ny >= img.size().height_)
+                continue;
+            bgr_color_uint8 pixel_color = img.pixel(img_pos(nx, ny));
+            if (pixel_color == invalid_color)
+                continue;
+            diff += color_distance(color, pixel_color);
+            ++color_count;
+        }
+    }
+    // Avoid division by zero.
+    const double divisor = std::max(color_count, 1);
+    // Square divisor to avoid coral like growing.
+    // This also reduces the number of currently open border pixels.
+    return diff/(divisor*divisor);
 }
 
-Color GetPixel(const Mat& image, const Pos& pos)
+img_pos find_best_pos(const bgr_image_uint8_t& img,
+    const img_position_set& next_positions,
+    const bgr_color_uint8& color, std::mt19937& g)
 {
-	PosComponent x, y;
-	tie(x, y) = pos;
-	return GetPixel(image, x, y);
+    typedef std::pair<double, img_pos> rated_position;
+    std::vector<rated_position> rated_positions;
+    rated_positions.reserve(next_positions.size());
+    std::transform(next_positions.begin(), next_positions.end(),
+        std::back_inserter(rated_positions),
+        [&img, &color](const img_pos& pos) -> rated_position
+    {
+        return std::make_pair(color_pos_difference(img, pos, color), pos);
+    });
+    std::shuffle(rated_positions.begin(), rated_positions.end(), g);
+    return std::min_element(rated_positions.begin(), rated_positions.end(),
+        [](const rated_position& rp1,
+            const rated_position& rp2)
+        -> bool
+    {
+        return rp1.first < rp2.first;
+    })->second;
 }
 
-const PosComponent spread = 1;
-
-set<Pos> GetFreeNeighbours(const Mat& image, Pos pos)
+img_position_set init(int argc, char *argv[], const bgr_image_uint8_t& img)
 {
-	PosComponent x, y;
-	tie(x, y) = pos;
-	vector<Pos> neighbours;
-	neighbours.reserve(8);
-	for (PosComponent nx = x-spread; nx <= x+spread; ++nx)
-		for (PosComponent ny = y-spread; ny <= y+spread; ++ny)
-			neighbours.push_back(Pos(nx, ny));
-	set<Pos> result;
-	copy_if(neighbours.begin(), neighbours.end(), inserter(result, result.begin()), [&image](Pos pos) -> bool
-	{
-		PosComponent x, y;
-		tie(x, y) = pos;
-		if (x < 0 || x >= image.cols || y < 0 || y >= image.rows)
-			return false;
-		return GetPixel(image, x, y)[0] == invalidColor;
-	});
-	return result;
+    const std::vector<std::string> arguments( argv + 1, argv + argc );
+    if ( arguments.size() != 1 )
+    {
+        std::cout << "Usage: all_colors [2/3/4]" << std::endl;
+        return img_position_set();
+    }
+
+    img_position_set init_position;
+    const auto add_relative_positions =
+        [&init_position, &img](double fx, double fy)
+    {
+        init_position.insert(img_pos(
+            static_cast<std::int32_t>(fx * img.size().width_),
+            static_cast<std::int32_t>(fy * img.size().height_)));
+    };
+    if (arguments[0] == "1")
+    {
+        add_relative_positions(0.5, 0.5);
+    }
+    else if (arguments[0] == "2")
+    {
+        add_relative_positions(0.33, 0.5);
+        add_relative_positions(0.67, 0.5);
+    }
+    else if (arguments[0] == "3")
+    {
+        add_relative_positions(0.33, 0.40);
+        add_relative_positions(0.50, 0.69);
+        add_relative_positions(0.67, 0.40);
+    }
+    else if (arguments[0] == "4")
+    {
+        add_relative_positions(0.33, 0.36);
+        add_relative_positions(0.67, 0.36);
+        add_relative_positions(0.33, 0.64);
+        add_relative_positions(0.67, 0.64);
+    }
+
+    img_position_set next_positions;
+    for (const auto& pos : init_position)
+    {
+        std::int32_t length = 5;
+        for (std::int32_t nx = pos.x_ - length; nx <= pos.x_ + length; ++nx)
+            next_positions.insert(img_pos(nx, pos.y_));
+        for (std::int32_t ny = pos.y_ - length; ny <= pos.y_ + length; ++ny)
+            next_positions.insert(img_pos(pos.x_, ny));
+    };
+    return next_positions;
 }
 
-template<class T>
-const T& min3(const T& a, const T& b, const T& c)
+bgr_image_uint8_t embellish(const bgr_image_uint8_t& img)
 {
-    return std::min(std::min(a, b), c);
-}
+    const auto filtered = median_blur_bgr(dilate_bgr(img));
 
-template<class T>
-const T& max3(const T& a, const T& b, const T& c)
-{
-    return std::max(std::max(a, b), c);
-}
-
-ColorDouble bgr2hsv(Color bgr)
-{
-	Channel bc = bgr[0];
-	Channel gc = bgr[1];
-	Channel rc = bgr[2];
-	double b = bc / 255.0;
-	double g = gc / 255.0;
-	double r = rc / 255.0;
-	Channel maxc = max3(rc, gc, bc);
-	double v = max3(r, g, b);
-	double s = v == 0 ? 0 : (v - min3(r, g, b))/v;
-	double h = 0;
-	double divisor = v - min3(r, g, b);
-	if (divisor == 0)
-		return ColorDouble(0, 0, 0);
-	if (maxc == rc)
-		h = 60*(g-b)/divisor;
-	else if (maxc == gc)
-		h = 120 + 60*(b-r)/divisor;
-	else if (maxc == bc)
-		h = 240 + 60*(r-g)/divisor;
-	else
-		assert(false); // If we land here our v is incorrect.
-	if (h < 0)
-		h += 360;
-	return ColorDouble(h, s, v);
-}
-
-double ColorDiff(Color bgr1, Color bgr2)
-{
-	double db = bgr2[0] - bgr1[0];
-	double dg = bgr2[1] - bgr1[1];
-	double dr = bgr2[2] - bgr1[2];
-	return sqrt(db*db + dg*dg + dr*dr);
-}
-
-double ColorPosDiff(const Mat& image, Pos pos, Color color)
-{
-	PosComponent x, y;
-	tie(x, y) = pos;
-
-	double diff = 0;
-	int colorCount = 0;
-	for (PosComponent nx = x-spread; nx <= x+spread; ++nx)
-	{
-		for (PosComponent ny = y-spread; ny <= y+spread; ++ny)
-		{
-			if (nx < 0 || nx >= image.cols || ny < 0 || ny >= image.rows)
-				continue;
-			Color pixelColor = GetPixel(image, nx, ny);
-			if (pixelColor[0] == invalidColor)
-				continue;
-			diff += ColorDiff(color, pixelColor);
-			++colorCount;
-		}
-	}
-	// Avoid division by zero.
-	double divisor = std::max(colorCount, 1);
-	// Square divisor to avoid coral like growing.
-	// This also reduces the number of currently open border pixels.
-	return diff/(divisor*divisor);
-}
-
-Pos FindBestPos(const Mat& image, set<Pos> nextPositions, Color color,
-				mt19937& g)
-{
-	vector<pair<double, Pos>> ratedPositions;
-	ratedPositions.reserve(nextPositions.size());
-	transform(nextPositions.begin(), nextPositions.end(),
-			back_inserter(ratedPositions), [&](Pos pos) -> pair<double, Pos>
-	{
-		return make_pair(ColorPosDiff(image, pos, color), pos);
-	});
-	shuffle(ratedPositions.begin(), ratedPositions.end(), g);
-	return min_element(ratedPositions.begin(), ratedPositions.end(),
-		[](const pair<double, Pos>& rp1, const pair<double, Pos>& rp2)
-	{
-		return rp1.first < rp2.first;
-	})->second;
-}
-
-set<Pos> NonBlackPositions(const Mat& img)
-{
-	set<Pos> result;
-	for (int y = 0; y < img.rows; ++y)
-		for (int x = 0; x < img.cols; ++x)
-			if (img.at<unsigned char>(y, x) > 0)
-				result.insert(Pos(x,y));
-	return result;
-}
-
-pair<Mat, set<Pos>> Init(int argc, char *argv[])
-{
-	if (argc < 2)
-	{
-		cout << "Usage: AllColors [2/3/4/imagePath]" << endl;
-		return make_pair(Mat(), set<Pos>());
-	}
-
-	int num = 0;
-	if (argc > 1 && string(argv[1]) == "2") num = 2;
-	if (argc > 1 && string(argv[1]) == "3") num = 3;
-	if (argc > 1 && string(argv[1]) == "4") num = 4;
-
-	if (!num)
-	{
-		Mat src = imread(argv[1], CV_LOAD_IMAGE_GRAYSCALE);
-		Mat image = Mat(src.size(), ImageType, Scalar_<Channel>(invalidColor));
-		return make_pair(image, NonBlackPositions(src));
-	}
-
-	Mat image = Mat(1080, 1920, ImageType, Scalar_<Channel>(invalidColor));
-	set<Pos> initPositions;
-	if (num == 2)
-	{
-		initPositions.insert(Pos(0.33*image.cols, 0.5*image.rows));
-		initPositions.insert(Pos(0.67*image.cols, 0.5*image.rows));
-	}
-	else if (num == 3)
-	{
-		initPositions.insert(Pos(0.33*image.cols, 0.4*image.rows));
-		initPositions.insert(Pos(0.67*image.cols, 0.4*image.rows));
-		initPositions.insert(Pos(0.50*image.cols, 0.69*image.rows));
-	}
-	else if (num == 4)
-	{
-		initPositions.insert(Pos(0.33*image.cols, 0.36*image.rows));
-		initPositions.insert(Pos(0.67*image.cols, 0.36*image.rows));
-		initPositions.insert(Pos(0.36*image.cols, 0.64*image.rows));
-		initPositions.insert(Pos(0.64*image.cols, 0.64*image.rows));
-	}
-
-	set<Pos> nextPositions;
-	for_each(initPositions.begin(), initPositions.end(), [&](const Pos& pos)
-	{
-		PosComponent plusLength = 5;
-		PosComponent x, y;
-		tie(x, y) = pos;
-		for (PosComponent nx = x-plusLength; nx <= x+plusLength; ++nx)
-			nextPositions.insert(Pos(nx, y));
-		for (PosComponent ny = y-plusLength; ny <= y+plusLength; ++ny)
-			nextPositions.insert(Pos(x, ny));
-	});
-	return make_pair(image, nextPositions);
-}
-
-Mat Embellish(const Mat& image)
-{
-	Mat ucharImg;
-	image.convertTo(ucharImg, CV_8UC3);
-
-	Mat filtered;
-	dilate(ucharImg, filtered, Mat(3, 3, CV_8UC1, Scalar(1)));
-	medianBlur(filtered, filtered, 3);
-
-	Mat ts;
-	vector<Mat> imageChans(3, Mat());
-	split(image, imageChans);
-	threshold(imageChans[0], ts, invalidColor, 1, THRESH_BINARY_INV);
-	Mat tu;
-	ts.convertTo(tu, CV_8UC1);
-	Mat tuchar;
-	cvtColor(tu, tuchar, CV_GRAY2BGR);
-
-	Mat m;
-	multiply(filtered, tuchar, m);
-
-	// fill black gaps, but only with half the median color.
-	Mat mixed;
-	addWeighted(ucharImg, 1.0, m, 0.5, 0.0, mixed);
-	return mixed;
+    bgr_image_uint8_t result = img;
+    for (std::int32_t y = 0; y < result.size().height_; ++y)
+    {
+        for (std::int32_t x = 0; x < result.size().width_; ++x)
+        {
+            const img_pos pos(x, y);
+            const auto image_col = img.pixel(pos);
+            if (image_col != invalid_color)
+            {
+                continue;
+            }
+            const auto filtered_col = filtered.pixel(pos);
+            auto col = image_col * 0.5 + filtered_col * 0.5;
+            if (col == invalid_color)
+            {
+                col = bgr_color_uint8(127, 127, 127);
+            }
+            result.pixel(pos) = col;
+        }
+    }
+    return result;
 }
 
 int main(int argc, char *argv[])
 {
-	Mat image;
-	set<Pos> nextPositions;
-	tie(image, nextPositions) = Init(argc, argv);
-	if (!image.rows)
-		return 1;
+    bgr_image_uint8_t img(size_2d(1920, 1080), invalid_color);
+    img_position_set next_positions = init(argc, argv, img);
+    if (!img.size().height_)
+        return 1;
 
-	vector<Color> colors;
-	int colValues = 64;
-	int colMult = 4;
-	for(int b = 1; b < colValues; ++b)
-		for(int g = 1; g < 2*colValues; ++g)
-			for(int r = 1; r < 2*colValues; ++r)
-				colors.push_back(Color(colMult*b, colMult*g/2, colMult*r/2));
+    // walk RGB cube
+    std::vector<bgr_color_uint8> colors;
+    const int col_values = 64;
+    const int col_mult = 4;
+    for(int b = 1; b < col_values; ++b)
+        for(int g = 1; g < 2 * col_values; ++g)
+            for(int r = 1; r < 2 * col_values; ++r)
+                colors.push_back(bgr_color_uint8(
+                    static_cast<std::uint8_t>(col_mult*b),
+                    static_cast<std::uint8_t>(col_mult*g/2),
+                    static_cast<std::uint8_t>(col_mult*r/2)));
 
-	random_device rd;
-	mt19937 g(1);
-	shuffle(colors.begin(), colors.end(), g);
+    std::random_device rd;
+    std::mt19937 g(0);
+    std::shuffle(colors.begin(), colors.end(), g);
 
-	sort(colors.begin(), colors.end(), [](Color bgr1, Color bgr2) -> bool
-	{
-		ColorDouble hsv1 = bgr2hsv(bgr1);
-		ColorDouble hsv2 = bgr2hsv(bgr2);
-		return hsv1[0] < hsv2[0];
-	});
+    std::sort(colors.begin(), colors.end(),
+        [](const bgr_color_uint8& bgr1, const bgr_color_uint8& bgr2) -> bool
+    {
+        // Other sortings instead of hue (saturation or value)
+        // also yield nice results.
+        return bgr_to_hsv(bgr1).h_ < bgr_to_hsv(bgr2).h_;
+    });
 
-	const int saveEveryNFrames = 512;
-	const int maxFrames = colors.size();
-	const int maxSaves = maxFrames / saveEveryNFrames;
-	unsigned long long imgNum = 0;
-	while (!colors.empty() && !nextPositions.empty())
-	{
-		Color color = colors.back();
-		colors.pop_back();
-		Pos pos = FindBestPos(image, nextPositions, color, g);
-		auto nextPositionsIt = nextPositions.find(pos);
-		assert(nextPositionsIt != nextPositions.end());
-		nextPositions.erase(nextPositionsIt);
-		SetPixel(image, pos.first, pos.second, color);
-		set<Pos> newFreePos = GetFreeNeighbours(image, pos);
-		nextPositions.insert(newFreePos.begin(), newFreePos.end());
-		if (colors.size() % saveEveryNFrames == 0)
-		{
-			stringstream ss;
-			ss << setw(4) << setfill('0') << ++imgNum;
-			cout << imgNum << "/" << maxSaves << " " << colors.size() << " " << nextPositions.size() << endl;
-			Mat outImage = Embellish(image);
-			imwrite("./output/image" + ss.str() + ".png", outImage);
-		}
-	}
+    const std::size_t save_every_n_frames = 512;
+    const std::size_t max_frames = colors.size();
+    const std::size_t max_saves = max_frames / save_every_n_frames;
+    unsigned long long img_num = 0;
+    while (!colors.empty() && !next_positions.empty())
+    {
+        bgr_color_uint8 color = colors.back();
+        colors.pop_back();
+        img_pos pos = find_best_pos(img, next_positions, color, g);
+        auto next_positions_it = next_positions.find(pos);
+        assert(next_positions_it != next_positions.end());
+        next_positions.erase(next_positions_it);
+        img.pixel(pos) = color;
+        img_position_set new_free_pos = get_free_neighbours(img, pos);
+        next_positions.insert(new_free_pos.begin(), new_free_pos.end());
+        if (colors.size() % save_every_n_frames == 0)
+        {
+            std::stringstream ss;
+            std::cout << "image:" << img_num << "/" << max_saves << " "
+                << "colors_left:" << colors.size() << " "
+                << "border_positions:" << next_positions.size() << std::endl;
+            ss << std::setw(4) << std::setfill('0') << ++img_num;
+            const std::string img_path = "./output/image" + ss.str() + ".ppm";
+            save_image_ppm(embellish(img), img_path);
+        }
+    }
 }
